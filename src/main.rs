@@ -8,17 +8,15 @@
 
 extern crate pdf_extract;
 
-use std::io::{self, Write, BufWriter, Error};
-use std::io::stdout;
-use std::fs::{File};
 use std::env;
 use std::path::PathBuf;
 use pdf_extract::extract_text;
 use linkify::{LinkFinder, LinkKind};
 // use log::{ info, error, debug, warn };
 use reqwest::{StatusCode,Url};
+use csv::Writer;
 
-use clap::{arg, Arg, ArgMatches, command, value_parser};
+use clap::{arg, ArgMatches, command, value_parser};
 // use clap::{ArgAction, Command};
 
 // ///////////////////////////
@@ -82,22 +80,26 @@ fn main() {
 
     let input_path = matches.get_one::<PathBuf>("input_path").unwrap();
 
-    let stdout = io::stdout();
-    let mut write_handle = io::BufWriter::new(stdout);
-
-    let write_handle_result: Result<Box<dyn Write>, Error> = match matches.get_one::<PathBuf>("output") {
-        Some(ref path) => File::open(path).map(|f| Box::new(f) as Box<dyn Write>),
-        None => Ok(Box::new(io::stdout())),
-    };
-
     let tested_links = test_links_in_pdf(input_path).unwrap();
 
-    if let Ok(mut write_handle) = write_handle_result {
-       for ls in tested_links.iter() {
-           writeln!(write_handle, "Link: {} - Status: {}", ls.link.as_str(), ls.status).expect("Unable to write.");
-       }
-       write_handle.flush().unwrap();  
-    };
+    // If there is an output specified, dispatch the data to the appropriate writer
+    // Else, just send to stdout
+    match matches.get_one::<PathBuf>("output")  {
+        Some(outpath) => {
+            // We'll just do CSV for now
+            let mut csv_writer = Writer::from_path(outpath.as_os_str()).unwrap();
+            csv_writer.write_record(&["Link","Status"]).unwrap();
+            for ls in tested_links.iter() {
+                csv_writer.write_record(&[ls.link.as_str(),ls.status.as_str()]).unwrap();
+            }
+            csv_writer.flush().unwrap();
+        },
+        None => {
+            for ls in tested_links.iter() {
+                println!("Link: {} - Status: {}", ls.link.as_str(), ls.status);
+            }  
+        }
+    }
 
     
 
